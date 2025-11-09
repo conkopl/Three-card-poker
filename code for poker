@@ -1,0 +1,307 @@
+import random
+from collections import Counter
+
+class Card:
+    """Represents a playing card."""
+    RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+    SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+    SUIT_SYMBOLS = {'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠'}
+    
+    def __init__(self, rank, suit):
+        self.rank = rank
+        self.suit = suit
+        self.value = self.RANKS.index(rank) + 2
+    
+    def __str__(self):
+        return f"{self.rank}{self.SUIT_SYMBOLS[self.suit]}"
+    
+    def __repr__(self):
+        return self.__str__()
+
+
+class Deck:
+    """Represents a deck of 52 cards."""
+    
+    def __init__(self):
+        self.cards = [Card(rank, suit) for suit in Card.SUITS for rank in Card.RANKS]
+        self.shuffle()
+    
+    def shuffle(self):
+        random.shuffle(self.cards)
+    
+    def deal(self, num=1):
+        if len(self.cards) < num:
+            self.__init__()
+        return [self.cards.pop() for _ in range(num)]
+
+
+class Hand:
+    """Represents a poker hand and evaluates its strength."""
+    
+    HAND_RANKINGS = {
+        'Straight Flush': 8,
+        'Three of a Kind': 7,
+        'Straight': 6,
+        'Flush': 5,
+        'Pair': 4,
+        'High Card': 3
+    }
+    
+    def __init__(self, cards):
+        self.cards = sorted(cards, key=lambda c: c.value, reverse=True)
+        self.rank_name, self.rank_value = self._evaluate()
+    
+    def _evaluate(self):
+        """Evaluate the hand and return its ranking."""
+        values = [card.value for card in self.cards]
+        suits = [card.suit for card in self.cards]
+        value_counts = Counter(values)
+        
+        is_flush = len(set(suits)) == 1
+        is_straight = self._check_straight(values)
+        
+        if is_straight and is_flush:
+            return 'Straight Flush', (self.HAND_RANKINGS['Straight Flush'], max(values))
+        
+        if 3 in value_counts.values():
+            three_kind_value = [v for v, count in value_counts.items() if count == 3][0]
+            return 'Three of a Kind', (self.HAND_RANKINGS['Three of a Kind'], three_kind_value)
+        
+        if is_straight:
+            return 'Straight', (self.HAND_RANKINGS['Straight'], max(values))
+        
+        if is_flush:
+            return 'Flush', (self.HAND_RANKINGS['Flush'], tuple(values))
+        
+        if 2 in value_counts.values():
+            pair_value = [v for v, count in value_counts.items() if count == 2][0]
+            kicker = [v for v in values if v != pair_value][0]
+            return 'Pair', (self.HAND_RANKINGS['Pair'], pair_value, kicker)
+        
+        return 'High Card', (self.HAND_RANKINGS['High Card'], tuple(values))
+    
+    def _check_straight(self, values):
+        """Check if values form a straight."""
+        sorted_values = sorted(values)
+        if sorted_values == [2, 3, 14]:
+            return True
+        return sorted_values == list(range(min(sorted_values), max(sorted_values) + 1))
+    
+    def __gt__(self, other):
+        """Compare two hands."""
+        return self.rank_value > other.rank_value
+    
+    def __eq__(self, other):
+        """Check if two hands are equal."""
+        return self.rank_value == other.rank_value
+    
+    def __str__(self):
+        return f"{' '.join(str(card) for card in self.cards)} ({self.rank_name})"
+
+
+class ThreeCardPoker:
+    """Main game class for 3 Card Poker."""
+    
+    ANTE_BONUS = {
+        'Straight Flush': 5,
+        'Three of a Kind': 4,
+        'Straight': 1
+    }
+    
+    def __init__(self, starting_balance=1000):
+        self.balance = starting_balance
+        self.deck = Deck()
+        self.player_hand = None
+        self.dealer_hand = None
+        self.ante_bet = 0
+        self.play_bet = 0
+    
+    def display_welcome(self):
+        """Display welcome message and rules."""
+        print("\n" + "="*60)
+        print("           WELCOME TO 3 CARD POKER")
+        print("="*60)
+        print("\nRULES:")
+        print("1. Place an Ante bet to start")
+        print("2. You and the dealer each get 3 cards")
+        print("3. Decide to PLAY (match your Ante) or FOLD (lose Ante)")
+        print("4. Dealer needs Queen-high or better to qualify")
+        print("5. If dealer doesn't qualify, Ante pays even money, Play pushes")
+        print("6. If dealer qualifies, best hand wins both bets")
+        print("\nANTE BONUS (paid regardless of dealer hand):")
+        print("  - Straight Flush: 5 to 1")
+        print("  - Three of a Kind: 4 to 1")
+        print("  - Straight: 1 to 1")
+        print("\nHAND RANKINGS (highest to lowest):")
+        print("  Straight Flush > Three of a Kind > Straight > Flush > Pair > High Card")
+        print("="*60 + "\n")
+    
+    def get_bet(self):
+        """Get ante bet from player."""
+        while True:
+            try:
+                bet = input(f"\nYour balance: ${self.balance}\nEnter your Ante bet (or 'quit' to exit): ")
+                if bet.lower() == 'quit':
+                    return None
+                
+                bet = int(bet)
+                if bet <= 0:
+                    print("Bet must be positive!")
+                elif bet > self.balance:
+                    print(f"Insufficient funds! You have ${self.balance}")
+                else:
+                    return bet
+            except ValueError:
+                print("Please enter a valid number!")
+    
+    def deal_hands(self):
+        """Deal cards to player and dealer."""
+        if len(self.deck.cards) < 10:
+            print("\n[Shuffling new deck...]")
+            self.deck = Deck()
+        
+        player_cards = self.deck.deal(3)
+        dealer_cards = self.deck.deal(3)
+        
+        self.player_hand = Hand(player_cards)
+        self.dealer_hand = Hand(dealer_cards)
+    
+    def display_player_hand(self):
+        """Display player's hand."""
+        print(f"\nYour hand: {self.player_hand}")
+    
+    def get_play_decision(self):
+        """Get player's decision to play or fold."""
+        while True:
+            decision = input("\nDo you want to PLAY or FOLD? ").strip().upper()
+            if decision in ['PLAY', 'P']:
+                return True
+            elif decision in ['FOLD', 'F']:
+                return False
+            else:
+                print("Please enter 'PLAY' or 'FOLD'")
+    
+    def dealer_qualifies(self):
+        """Check if dealer has Queen-high or better."""
+        if self.dealer_hand.rank_name != 'High Card':
+            return True
+        return self.dealer_hand.cards[0].value >= 12
+    
+    def calculate_payout(self, played):
+        """Calculate winnings/losses for the round.
+        Note: Bets have already been deducted from balance.
+        Payout is what gets added back to the balance.
+        """
+        print(f"\nDealer's hand: {self.dealer_hand}")
+        
+        payout = 0
+        
+        if not played:
+            print("\nYou folded.")
+            # Ante is already deducted, payout is 0 (lose ante)
+            payout = 0
+        else:
+            # Check for ante bonus (paid regardless of dealer hand or outcome)
+            ante_bonus = self.ANTE_BONUS.get(self.player_hand.rank_name, 0)
+            if ante_bonus > 0:
+                bonus_amount = self.ante_bet * ante_bonus
+                print(f"\n🎉 ANTE BONUS: {self.player_hand.rank_name} pays {ante_bonus} to 1 = ${bonus_amount}")
+                payout += bonus_amount
+            
+            if not self.dealer_qualifies():
+                # Dealer doesn't qualify: Ante pays 1:1, Play is returned
+                print("\n⚠️  Dealer does not qualify (needs Queen-high or better)")
+                print(f"Ante pays even money: +${self.ante_bet}")
+                print(f"Play bet is returned: +${self.play_bet}")
+                # Return ante (already deducted) + ante winnings + play bet (already deducted)
+                payout += self.ante_bet * 2 + self.play_bet
+            else:
+                # Dealer qualifies, compare hands
+                print("\n✓ Dealer qualifies")
+                if self.player_hand > self.dealer_hand:
+                    # Win both bets at 1:1
+                    win_amount = self.ante_bet + self.play_bet
+                    print(f"🎉 YOU WIN! Both bets pay even money: +${win_amount}")
+                    # Return original bets + winnings
+                    payout += (self.ante_bet + self.play_bet) * 2
+                elif self.player_hand == self.dealer_hand:
+                    # Push - return bets
+                    print(f"🤝 PUSH! Bets are returned: +${self.ante_bet + self.play_bet}")
+                    payout += self.ante_bet + self.play_bet
+                else:
+                    # Lose - bets already deducted, but ante bonus still applies
+                    loss_amount = self.ante_bet + self.play_bet
+                    print(f"😞 Dealer wins. You lose: -${loss_amount}")
+                    # Don't reset payout to 0 - keep the ante bonus if any
+        
+        return payout
+    
+    def play_round(self):
+        """Play one round of 3 Card Poker."""
+        # Reset bets for new round
+        self.play_bet = 0
+        
+        self.ante_bet = self.get_bet()
+        if self.ante_bet is None:
+            return False
+        
+        # Deduct ante bet
+        self.balance -= self.ante_bet
+        
+        self.deal_hands()
+        self.display_player_hand()
+        
+        played = self.get_play_decision()
+        
+        if played:
+            self.play_bet = self.ante_bet
+            # Deduct play bet
+            self.balance -= self.play_bet
+        
+        # Calculate payout (returns amount to add back to balance)
+        payout = self.calculate_payout(played)
+        self.balance += payout
+        
+        # Calculate net result for display
+        total_bet = self.ante_bet if not played else self.ante_bet + self.play_bet
+        net_result = payout - total_bet
+        
+        if net_result > 0:
+            print(f"\n💰 Net win: +${net_result}")
+        elif net_result < 0:
+            print(f"\n📉 Net loss: ${net_result}")
+        else:
+            print(f"\n↔️  Break even")
+        
+        print(f"New balance: ${self.balance}")
+        print("\n" + "-"*60)
+        
+        return True
+    
+    def play(self):
+        """Main game loop."""
+        self.display_welcome()
+        
+        while self.balance > 0:
+            if not self.play_round():
+                break
+            
+            if self.balance <= 0:
+                print("\n😢 You're out of money! Game over.")
+                break
+            
+            play_again = input("\nPlay another round? (y/n): ").strip().lower()
+            if play_again not in ['y', 'yes']:
+                break
+        
+        print(f"\n{'='*60}")
+        print(f"           GAME OVER")
+        print(f"{'='*60}")
+        print(f"Final balance: ${self.balance}")
+        print("Thanks for playing 3 Card Poker!")
+        print(f"{'='*60}\n")
+
+
+if __name__ == "__main__":
+    game = ThreeCardPoker()
+    game.play()
